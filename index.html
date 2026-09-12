@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>FRIDGE SIMULATOR 3D - you are the fridge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=IBM+Plex+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html,body{ height:100%; overflow:hidden; background:#0c1214; }
+  body{ font-family:'IBM Plex Serif', Georgia, serif; color:#e8f2ee; }
+  #c{ position:fixed; inset:0; display:block; touch-action:none; }
+  .vignette{ position:fixed; inset:0; pointer-events:none; z-index:5;
+    background:radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(6,10,12,.5) 100%); }
+  #hud{ position:fixed; inset:0; z-index:10; pointer-events:none; display:none; }
+  #temp{ position:absolute; top:16px; left:50%; transform:translateX(-50%); text-align:center;
+    font-family:'Fredoka', sans-serif; text-shadow:0 2px 8px rgba(0,0,0,.4); }
+  #temp .t{ font-size:clamp(30px,6vw,46px); font-weight:700; color:#fff; }
+  #temp .s{ font-family:'IBM Plex Serif', serif; font-size:13px; color:#bcd8d0; font-style:italic; }
+  #temp .t.ok{ color:#8ae8b0; } #temp .t.warn{ color:#ffd98a; } #temp .t.bad{ color:#ff7a5a; }
+  #counts{ position:absolute; top:20px; left:22px; font-family:'Fredoka',sans-serif; font-size:16px;
+    color:#bcd8d0; text-shadow:0 2px 6px rgba(0,0,0,.5); line-height:1.5; }
+  #light{ position:absolute; top:22px; right:22px; font-family:'Fredoka',sans-serif; font-size:14px;
+    color:#ffd98a; text-shadow:0 2px 6px rgba(0,0,0,.5); }
+  #msg{ position:absolute; left:50%; bottom:28%; transform:translateX(-50%); max-width:84vw; text-align:center;
+    font-style:italic; font-size:clamp(16px,3.2vw,22px); color:#fff; text-shadow:0 2px 8px rgba(0,0,0,.6);
+    opacity:0; transition:opacity .3s; }
+  #btns{ position:absolute; bottom:calc(16px + env(safe-area-inset-bottom)); left:0; right:0;
+    display:flex; gap:12px; justify-content:center; pointer-events:auto; flex-wrap:wrap; }
+  button{ font-family:'Fredoka', sans-serif; font-weight:700; cursor:pointer; color:#0c2a20;
+    background:#8ae8b0; border:none; padding:13px 22px; font-size:15px; border-radius:24px; }
+  #warmer{ background:#ffd98a; } #stock{ background:#a8d8f0; } #slam{ background:#f0a8c0; }
+  .card{ position:fixed; inset:0; z-index:20; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; text-align:center; padding:28px;
+    background:radial-gradient(ellipse at 50% 38%, rgba(14,40,36,.94), rgba(4,10,9,.97) 78%); }
+  .card h1{ font-family:'Fredoka', sans-serif; font-weight:700; font-size:clamp(40px,9vw,90px);
+    color:#8ae8b0; text-shadow:0 5px 0 #1a5a40, 0 0 50px rgba(140,230,180,.25); }
+  .card .sub{ font-style:italic; font-size:clamp(15px,3vw,20px); color:#a8ccc0; margin:12px 0 24px; }
+  .card p{ max-width:560px; font-size:16px; line-height:1.8; color:#a8c4ba; margin-bottom:10px; }
+  .card p b{ color:#8ae8b0; }
+  .card .go{ margin-top:26px; }
+  .keys{ margin-top:22px; font-size:12px; letter-spacing:.24em; color:#4a7a68; }
+  #endcard{ display:none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="vignette"></div>
+
+<div id="hud">
+  <div id="temp"><div class="t ok" id="tempv">37°F</div><div class="s">the sweet spot is 34-40</div></div>
+  <div id="counts">ITEMS 0<br>FRESH 0<br>LOST 0</div>
+  <div id="light">LIGHT ON</div>
+  <div id="msg"></div>
+  <div id="btns">
+    <button id="colder">COLDER</button>
+    <button id="warmer">WARMER</button>
+    <button id="stock">STOCK GROCERIES</button>
+    <button id="slam">SLAM DOOR</button>
+  </div>
+</div>
+
+<div class="card" id="titlecard">
+  <h1>FRIDGE<br>SIMULATOR</h1>
+  <div class="sub">you are the fridge. keep the food alive.</div>
+  <p>You hum. You hold the milk at thirty-seven degrees. Somewhere, a light debates its existence.</p>
+  <p><b>COLDER / WARMER</b> steers the temperature into the green zone. Groceries spoil warm and freeze cold.
+     People will open your door and wander off with it hanging open. <b>SLAM DOOR</b>. That is what it is for.
+     <b>STOCK GROCERIES</b> when the shelves thin out. Lose ten items and the kitchen holds a small funeral.</p>
+  <button class="go" id="start">Plug in</button>
+  <div class="keys">A FRIDGE HUMS &middot; SOMEWHERE, A LIGHT DEBATES ITS EXISTENCE</div>
+</div>
+
+<div class="card" id="endcard">
+  <h1 id="endtitle">UNPLUGGED</h1>
+  <div class="sub" id="endsub">ten items lost</div>
+  <p id="endbody"></p>
+  <button class="go" id="again">New fridge</button>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.1;
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x0c1214);
+const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,60);
+camera.position.set(0,2.6,6.8); camera.lookAt(0,2.2,0);
+
+scene.add(new THREE.HemisphereLight(0x8ab8b0,0x1a2a26,.7));
+
+// ---------- fridge interior (camera looks in) ----------
+const innerM=new THREE.MeshStandardMaterial({color:0xcfe8de,roughness:.5});
+const innerM2=new THREE.MeshStandardMaterial({color:0xb8dcd0,roughness:.55});
+{
+  const back=new THREE.Mesh(new THREE.PlaneGeometry(5,6),innerM);
+  back.position.set(0,2.5,-1.2); back.receiveShadow=true; scene.add(back);
+  const left=new THREE.Mesh(new THREE.PlaneGeometry(2.4,6),innerM2);
+  left.rotation.y=Math.PI/2; left.position.set(-2.5,2.5,0); scene.add(left);
+  const right=new THREE.Mesh(new THREE.PlaneGeometry(2.4,6),innerM2);
+  right.rotation.y=-Math.PI/2; right.position.set(2.5,2.5,0); scene.add(right);
+  const top=new THREE.Mesh(new THREE.PlaneGeometry(5,2.4),innerM2);
+  top.rotation.x=Math.PI/2; top.position.set(0,5.5,0); scene.add(top);
+  const bottom=new THREE.Mesh(new THREE.PlaneGeometry(5,2.4),innerM);
+  bottom.rotation.x=-Math.PI/2; bottom.position.set(0,-.5,0); bottom.receiveShadow=true; scene.add(bottom);
+}
+// interior light
+const lamp=new THREE.PointLight(0xfff8e0,30,12,1.6);
+lamp.position.set(0,5,1.2); lamp.castShadow=true; scene.add(lamp);
+// door (opens toward camera-right)
+const door=new THREE.Group(); door.position.set(2.5,2.5,1.2); scene.add(door);
+{
+  const panel=new THREE.Mesh(new THREE.BoxGeometry(5.2,6.2,.35),
+    new THREE.MeshStandardMaterial({color:0xe8f0ea,roughness:.4}));
+  panel.position.x=-2.6; panel.castShadow=true; door.add(panel);
+  // door shelves
+  for(let i=0;i<2;i++){
+    const sh=new THREE.Mesh(new THREE.BoxGeometry(4.6,.1,.5),
+      new THREE.MeshStandardMaterial({color:0xd0e0d8,roughness:.5}));
+    sh.position.set(-2.6,.5+i*1.6,-.35); door.add(sh);
+  }
+}
+// wire shelves
+const shelfM=new THREE.MeshStandardMaterial({color:0xe8ecec,roughness:.35,metalness:.4});
+const SHELVES=[.6,2.1,3.6];
+for(const y of SHELVES){
+  for(let i=0;i<7;i++){
+    const bar=new THREE.Mesh(new THREE.CylinderGeometry(.02,.02,4.6,6),shelfM);
+    bar.rotation.z=Math.PI/2; bar.position.set(0,y,-1+i*.3); scene.add(bar);
+  }
+  const rail=new THREE.Mesh(new THREE.BoxGeometry(4.7,.05,.06),shelfM);
+  rail.position.set(0,y,0.9); scene.add(rail);
+}
+// crisper drawers
+for(const s of [-1,1]){
+  const dr=new THREE.Mesh(new THREE.BoxGeometry(2.2,.8,1.6),
+    new THREE.MeshStandardMaterial({color:0xdcefe8,roughness:.3,transparent:true,opacity:.85}));
+  dr.position.set(s*1.15,.1,0); scene.add(dr);
+}
+
+// ---------- groceries ----------
+const ITEMTYPES=[
+  ['milk',0xf4f6f0,()=>new THREE.CylinderGeometry(.22,.22,.8,10)],
+  ['oj',0xf0a030,()=>new THREE.BoxGeometry(.4,.7,.4)],
+  ['jam',0xc92a4a,()=>new THREE.CylinderGeometry(.16,.16,.4,10)],
+  ['pickles',0x5a8a3a,()=>new THREE.CylinderGeometry(.18,.18,.5,10)],
+  ['leftovers',0x8a6a4a,()=>new THREE.CylinderGeometry(.3,.24,.3,12)],
+  ['eggs',0xe8d8b8,()=>new THREE.BoxGeometry(.5,.25,.35)],
+  ['soda',0x3a6ac9,()=>new THREE.CylinderGeometry(.12,.12,.45,8)],
+  ['butter',0xf0e8a0,()=>new THREE.BoxGeometry(.45,.2,.25)],
+];
+const items=[];
+function stock(n){
+  let added=0;
+  for(const y of SHELVES){
+    for(let x=-1.9;x<=1.9;x+=.62){
+      if(added>=n)return;
+      if(items.some(i=>i.mesh.position.y===y+.3&&Math.abs(i.mesh.position.x-x)<.3))continue;
+      if(Math.random()<.55)continue;
+      const [name,color,geo]=ITEMTYPES[Math.floor(Math.random()*ITEMTYPES.length)];
+      const mesh=new THREE.Mesh(geo(),new THREE.MeshStandardMaterial({color,roughness:.5}));
+      mesh.position.set(x,y+.3,-.3-Math.random()*.4);
+      mesh.castShadow=true;
+      scene.add(mesh);
+      items.push({mesh,name,fresh:100,frozen:false,baseColor:color});
+      added++;
+    }
+  }
+}
+
+// frost + spoil overlays
+const frostM=new THREE.MeshBasicMaterial({color:0xbfe8f8,transparent:true,opacity:0});
+const steamP=[];
+function puffs(x,y,z,col){
+  for(let i=0;i<6;i++){
+    const p=new THREE.Mesh(new THREE.SphereGeometry(.06+Math.random()*.05,8,8),
+      new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.7}));
+    p.position.set(x+(Math.random()-.5)*.4,y+Math.random()*.3,z);
+    p.userData={v:.5+Math.random(),life:1};
+    scene.add(p); steamP.push(p);
+  }
+}
+
+// ---------- audio ----------
+let AC=null,master=null,humOsc=null,humGain=null;
+function audio(){
+  if(AC)return;
+  AC=new (window.AudioContext||window.webkitAudioContext)();
+  master=AC.createGain();master.gain.value=.8;master.connect(AC.destination);
+  humOsc=AC.createOscillator();humGain=AC.createGain();
+  humOsc.type='sawtooth';humOsc.frequency.value=52;
+  const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.value=120;
+  humGain.gain.value=.06;
+  humOsc.connect(f);f.connect(humGain);humGain.connect(master);
+  humOsc.start();
+}
+function clunk(){
+  const t=AC.currentTime,o=AC.createOscillator(),g=AC.createGain();
+  o.frequency.setValueAtTime(140,t);o.frequency.exponentialRampToValueAtTime(45,t+.15);
+  g.gain.setValueAtTime(.5,t);g.gain.exponentialRampToValueAtTime(.001,t+.3);
+  o.connect(g);g.connect(master);o.start(t);o.stop(t+.32);
+}
+function slamSnd(){
+  clunk();
+  const t=AC.currentTime,len=44100*.2,b=AC.createBuffer(1,len,44100),d=b.getChannelData(0);
+  for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.exp(-i/4000);
+  const s=AC.createBufferSource();s.buffer=b;
+  const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.value=500;
+  const g=AC.createGain();g.gain.value=.4;
+  s.connect(f);f.connect(g);g.connect(master);s.start(t);
+}
+function ding(good){
+  const t=AC.currentTime,o=AC.createOscillator(),g=AC.createGain();
+  o.type='sine';o.frequency.value=good?880:196;
+  g.gain.setValueAtTime(.2,t);g.gain.exponentialRampToValueAtTime(.001,t+.4);
+  o.connect(g);g.connect(master);o.start(t);o.stop(t+.45);
+}
+
+// ---------- state ----------
+let started=false,over=false,temp=37,doorOpen=1,doorT=10,stockT=0;
+let fresh=0,lost=0,elapsed=0;
+const msgEl=document.getElementById('msg');let msgT=0;
+function say(t,ms=2800){ msgEl.textContent=t; msgEl.style.opacity=1; msgT=ms/1000; }
+const tempEl=document.getElementById('tempv'),countsEl=document.getElementById('counts');
+const QUIPS_OK=['a jar of pickles settles contentedly.','the milk approves.','the leftovers from tuesday hold on.','your hum is in tune today.'];
+const QUIPS_OPEN=['the door. THE DOOR.','cold air is escaping. that was your cold air.','someone is staring into you, deciding nothing.'];
+function render(){
+  tempEl.textContent=Math.round(temp)+'°F';
+  tempEl.className='t '+(temp>=34&&temp<=40?'ok':(temp<30||temp>46?'bad':'warn'));
+  countsEl.innerHTML='ITEMS '+items.length+'<br>FRESH '+fresh+'<br>LOST '+lost;
+}
+document.getElementById('colder').addEventListener('click',()=>{temp-=2;clunk();render();});
+document.getElementById('warmer').addEventListener('click',()=>{temp+=2;clunk();render();});
+document.getElementById('stock').addEventListener('click',()=>{
+  if(items.length>=18){say('the shelves are full. a good problem.');return;}
+  stock(6); ding(true); say('groceries stocked. the shelves feel purpose.');
+});
+document.getElementById('slam').addEventListener('click',()=>{
+  if(doorOpen>0){ doorOpen=0; slamSnd(); say('SLAM. order restored.'); }
+  else say('the door is already closed. you slam it anyway, for emphasis.');
+});
+document.getElementById('start').addEventListener('click',()=>{
+  document.getElementById('titlecard').style.display='none';
+  document.getElementById('hud').style.display='block';
+  audio(); started=true; stock(9); render();
+  say('you hum. you hold the milk at thirty-seven degrees.',3400);
+});
+document.getElementById('again').addEventListener('click',()=>location.reload());
+function loseItem(i,why){
+  const it=items[i];
+  puffs(it.mesh.position.x,it.mesh.position.y,it.mesh.position.z,why==='frozen'?0xbfe8f8:0x8aa06a);
+  scene.remove(it.mesh);
+  items.splice(i,1); lost++;
+  ding(false);
+  say(why==='frozen'?('the '+it.name+' froze solid. it had dreams.'):('the '+it.name+' turned. it will be missed.'));
+  render();
+  if(lost>=10){
+    over=true;
+    document.getElementById('endbody').textContent='Ten items lost to the entropy of the kitchen. The crisper drawers are a memorial now. You kept '+fresh+' items fresh for '+Math.floor(elapsed)+' seconds of honest refrigeration.';
+    setTimeout(()=>{document.getElementById('endcard').style.display='flex';},1400);
+  }
+}
+
+// ---------- loop ----------
+const clock=new THREE.Clock();
+let quipT=20;
+function tick(){
+  requestAnimationFrame(tick);
+  const dt=Math.min(clock.getDelta(),.05),t=clock.elapsedTime;
+  if(started&&!over){
+    elapsed+=dt;
+    // door events
+    doorT-=dt;
+    if(doorT<=0&&doorOpen<=0){
+      doorT=8+Math.random()*7;
+      doorOpen=1;
+      say(QUIPS_OPEN[Math.floor(Math.random()*QUIPS_OPEN.length)]);
+    }
+    // door swing anim
+    const target=doorOpen>0?-1.5:0;
+    door.rotation.y+=(target-door.rotation.y)*dt*4;
+    // temp drift: room temp pulls up when open, compressor pulls to setpoint
+    if(doorOpen>0) temp+=dt*1.6;
+    else temp+=(37-temp)*dt*.02;
+    temp=THREE.MathUtils.clamp(temp,20,65);
+    // light flickers when door open
+    lamp.intensity=doorOpen>0?(26+Math.sin(t*40)*4):30;
+    document.getElementById('light').textContent=doorOpen>0?'LIGHT ON (door open)':'LIGHT ON';
+    // item freshness
+    for(let i=items.length-1;i>=0;i--){
+      const it=items[i];
+      if(temp>40) it.fresh-=dt*(temp-40)*.35;
+      else if(temp<32) it.fresh-=dt*(32-temp)*.3;
+      else it.fresh=Math.min(100,it.fresh+dt*.5);
+      // tint: spoil = green-brown, frozen = pale blue
+      const m=it.mesh.material;
+      if(it.fresh<50){
+        const c=new THREE.Color(it.baseColor);
+        c.lerp(temp<32?new THREE.Color(0xbfe8f8):new THREE.Color(0x6a7a4a),1-it.fresh/50);
+        m.color=c;
+      }
+      if(it.fresh<=0) loseItem(i,temp<32?'frozen':'spoiled');
+    }
+    if(items.length&&Math.random()<dt*.15){ fresh++; render(); }
+    quipT-=dt;
+    if(quipT<=0){ quipT=22+Math.random()*10; if(temp>=34&&temp<=40) say(QUIPS_OK[Math.floor(Math.random()*QUIPS_OK.length)]); }
+    // steam puffs
+    for(let i=steamP.length-1;i>=0;i--){
+      const p=steamP[i];
+      p.position.y+=p.userData.v*dt; p.userData.life-=dt*.8;
+      p.material.opacity=Math.max(0,p.userData.life*.7);
+      if(p.userData.life<=0){ scene.remove(p); steamP.splice(i,1); }
+    }
+    render();
+  }
+  if(msgT>0){ msgT-=dt; if(msgT<=0) msgEl.style.opacity=0; }
+  camera.position.x=Math.sin(t*.1)*.3;
+  camera.lookAt(0,2.2,-.3);
+  renderer.render(scene,camera);
+}
+tick();
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+</script>
+</body>
+</html>
